@@ -2,6 +2,7 @@ package ru.netology.chat.network;
 
 import java.io.*;
 import java.net.Socket;
+import java.time.LocalDateTime;
 
 public class TCPConnection {
     private final Socket socket;
@@ -10,11 +11,12 @@ public class TCPConnection {
     private final BufferedReader in;
     private final BufferedWriter out;
 
-    public TCPConnection(TCPConnectionCatcher connectionCatcher, String ipAddress, int port) throws IOException {
-        this(connectionCatcher, new Socket(ipAddress, port));
+    public TCPConnection(TCPConnectionCatcher connectionCatcher, String ipAddress, int port, String logPath) throws IOException {
+        this(connectionCatcher, new Socket(ipAddress, port), logPath);
     }
 
-    public TCPConnection(TCPConnectionCatcher connectionCatcher, Socket socket) throws IOException {
+    public TCPConnection(TCPConnectionCatcher connectionCatcher, Socket socket, String logPath) throws IOException {
+        BufferedWriter log = new BufferedWriter(new FileWriter(logPath, true));
         this.socket = socket;
         this.connectionCatcher = connectionCatcher;
         this.in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
@@ -23,10 +25,10 @@ public class TCPConnection {
             @Override
             public void run() {
                 try {
-                    connectionCatcher.onConnectionReady(TCPConnection.this);
+                    connectionCatcher.onConnectionReady(TCPConnection.this, log);
                     while(!receptionThread.isInterrupted()) {
                         String message = in.readLine();
-                        connectionCatcher.onReceiveString(TCPConnection.this, message);
+                        connectionCatcher.onReceiveString(TCPConnection.this, message, log);
                     }
                 } catch (IOException e) {
                     connectionCatcher.onException(TCPConnection.this, e);
@@ -37,10 +39,13 @@ public class TCPConnection {
         receptionThread.start();
     }
 
-    public synchronized void sendMessage(String message) {
+    public synchronized void sendMessage(String message, LocalDateTime currentDateTime, BufferedWriter log) {
         try {
-            out.write(message + "\r\n");
+            String str = message + " — " + currentDateTime + "\r\n";
+            out.write(str);
             out.flush();
+            log.write(str);
+            log.flush();
         } catch (IOException e) {
             connectionCatcher.onException(TCPConnection.this, e);
             disconnect();
