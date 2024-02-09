@@ -11,11 +11,13 @@ public class TCPConnection {
     private final BufferedReader in;
     private final BufferedWriter out;
 
-    public TCPConnection(TCPConnectionCatcher connectionCatcher, String ipAddress, int port, String logPath) throws IOException {
-        this(connectionCatcher, new Socket(ipAddress, port), logPath);
+    public TCPConnection(TCPConnectionCatcher connectionCatcher, String ipAddress, int port,
+                         String logPath, String senderName) throws IOException {
+        this(connectionCatcher, new Socket(ipAddress, port), logPath, senderName);
     }
 
-    public TCPConnection(TCPConnectionCatcher connectionCatcher, Socket socket, String logPath) throws IOException {
+    public TCPConnection(TCPConnectionCatcher connectionCatcher, Socket socket,
+                         String logPath, String senderName) throws IOException {
         BufferedWriter log = new BufferedWriter(new FileWriter(logPath, true));
         this.socket = socket;
         this.connectionCatcher = connectionCatcher;
@@ -25,10 +27,15 @@ public class TCPConnection {
             @Override
             public void run() {
                 try {
-                    connectionCatcher.onConnectionReady(TCPConnection.this, log);
+                    connectionCatcher.onConnectionReady(TCPConnection.this, log, senderName);
                     while(!receptionThread.isInterrupted()) {
                         String message = in.readLine();
-                        connectionCatcher.onReceiveString(TCPConnection.this, message, log);
+                        if (!message.equals("/exit")) {
+                            connectionCatcher.onReceiveString(TCPConnection.this, message, log, senderName);
+                        } else {
+                            connectionCatcher.onDisconnect(TCPConnection.this, log, senderName);
+                            disconnect();
+                        }
                     }
                 } catch (IOException e) {
                     connectionCatcher.onException(TCPConnection.this, e);
@@ -39,9 +46,10 @@ public class TCPConnection {
         receptionThread.start();
     }
 
-    public synchronized void sendMessage(String message, LocalDateTime currentDateTime, BufferedWriter log) {
+    public synchronized void sendMessage(String message, LocalDateTime currentDateTime,
+                                         BufferedWriter log, String senderName) {
         try {
-            String str = message + " — " + currentDateTime + "\r\n";
+            String str = currentDateTime + " — " + senderName + ": " + message + "\r\n";
             out.write(str);
             out.flush();
             log.write(str);
