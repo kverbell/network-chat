@@ -18,7 +18,7 @@ public class TCPConnection {
 
     public TCPConnection(TCPConnectionCatcher connectionCatcher, Socket socket,
                          String logPath, String senderName) throws IOException {
-        BufferedWriter log = new BufferedWriter(new FileWriter(logPath, true));
+        BufferedWriter logFile = new BufferedWriter(new FileWriter(logPath, true));
         this.socket = socket;
         this.connectionCatcher = connectionCatcher;
         this.in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
@@ -27,14 +27,13 @@ public class TCPConnection {
             @Override
             public void run() {
                 try {
-                    connectionCatcher.onConnectionReady(TCPConnection.this, log, senderName);
+                    connectionCatcher.onConnectionReady(TCPConnection.this, logFile, senderName);
                     while(!receptionThread.isInterrupted()) {
                         String message = in.readLine();
                         if (!message.equals("/exit")) {
-                            connectionCatcher.onReceiveString(TCPConnection.this, message, log, senderName);
+                            connectionCatcher.onReceiveString(TCPConnection.this, message, logFile, senderName);
                         } else {
-                            connectionCatcher.onDisconnect(TCPConnection.this, log, senderName);
-                            disconnect();
+                            connectionCatcher.onDisconnect(TCPConnection.this, logFile, senderName);
                         }
                     }
                 } catch (IOException e) {
@@ -46,28 +45,38 @@ public class TCPConnection {
         receptionThread.start();
     }
 
-    public synchronized void sendMessage(String message, LocalDateTime currentDateTime,
-                                         BufferedWriter log, String senderName) {
+    public synchronized void sendMessage(String message, BufferedWriter logFile, String senderName) {
         try {
+            LocalDateTime currentDateTime = LocalDateTime.now();
             String str = currentDateTime + " — " + senderName + ": " + message + "\r\n";
             out.write(str);
             out.flush();
-            log.write(str);
-            log.flush();
+            logFile.write(str);
+            logFile.flush();
         } catch (IOException e) {
             connectionCatcher.onException(TCPConnection.this, e);
             disconnect();
         }
-
     }
 
     public synchronized void disconnect() {
+        System.out.println("Disconnecting TCPConnection.");
         receptionThread.interrupt();
         try {
             socket.close();
+            System.out.println("Socket closed successfully.");
         } catch (IOException e) {
             connectionCatcher.onException(TCPConnection.this, e);
+            System.out.println("Error while closing socket: " + e.getMessage());
         }
+    }
+
+    public Thread getReceptionThread() {
+        return receptionThread;
+    }
+
+    public Socket getSocket() {
+        return socket;
     }
 
     @Override
