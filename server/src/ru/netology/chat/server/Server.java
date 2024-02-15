@@ -7,12 +7,14 @@ import ru.netology.chat.network.Util;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.net.ServerSocket;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 
 public class Server implements TCPConnectionCatcher {
 
     private final ArrayList<TCPConnection> connections = new ArrayList<>();
+    private boolean isRunning = true;
+    private TCPConnection tcpConnection;
+
 
     public static void main(String[] args) {
         int port = Integer.parseInt(Util.getSettings("server/src/ru/netology/chat/server/settings.txt", 1));
@@ -23,9 +25,10 @@ public class Server implements TCPConnectionCatcher {
     public Server(int port, String logPath, String serverName) {
         System.out.println("The server is running.");
         try (ServerSocket serverSocket = new ServerSocket(port)) {
-            while(true) {
+            while(isRunning) {
                 try {
-                    new TCPConnection(this, serverSocket.accept(), logPath, serverName);
+                    tcpConnection = new TCPConnection(this, serverSocket.accept(),
+                            logPath, serverName);
                 } catch (IOException e) {
                     System.out.println("TCPConnection exception: " + e);
                 }
@@ -36,22 +39,22 @@ public class Server implements TCPConnectionCatcher {
     }
 
     @Override
-    public synchronized void onConnectionReady(TCPConnection tcpConnection, BufferedWriter log,
+    public synchronized void onConnectionReady(TCPConnection tcpConnection, BufferedWriter logFile,
                                                String senderName) {
         connections.add(tcpConnection);
-        sendToClients("Client connected: " + tcpConnection, log, senderName);
+        sendToClients("Client connected: " + tcpConnection, logFile, senderName);
     }
 
     @Override
     public synchronized void onReceiveString(TCPConnection tcpConnection, String message,
-                                             BufferedWriter log, String senderName) {
-        sendToClients(message, log, senderName);
+                                             BufferedWriter logFile, String senderName) {
+        sendToClients(message, logFile, senderName);
     }
 
     @Override
-    public synchronized void onDisconnect(TCPConnection tcpConnection, BufferedWriter log,
+    public synchronized void onDisconnect(TCPConnection tcpConnection, BufferedWriter logFile,
                                           String senderName) {
-        sendToClients("Client disconnected: " + tcpConnection, log, senderName);
+        sendToClients("Client disconnected: " + tcpConnection, logFile, senderName);
         connections.remove(tcpConnection);
     }
 
@@ -60,12 +63,25 @@ public class Server implements TCPConnectionCatcher {
         System.out.println("TCPConnection exception: " + e);
     }
 
-    private void sendToClients(String message, BufferedWriter log, String senderName) {
-        System.out.println(message);
+    public synchronized void closeConnections() {
         for (TCPConnection connection : connections) {
-            LocalDateTime currentDateTime = LocalDateTime.now();
-            connection.sendMessage(message, currentDateTime, log, senderName);
+            connection.disconnect();
         }
+        connections.clear();
     }
 
+    @Override
+    public synchronized void onStop() {
+        tcpConnection.disconnect();
+        closeConnections();
+        isRunning = false;
+        System.out.println("Server stopping.");
+    }
+
+    private void sendToClients(String message, BufferedWriter logFile, String senderName) {
+        System.out.println(message);
+        for (TCPConnection connection : connections) {
+            connection.sendMessage(message, logFile, senderName);
+        }
+    }
 }
